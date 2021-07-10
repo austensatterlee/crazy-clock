@@ -10,7 +10,15 @@
     var canvas = {};
     canvas.node = document.createElement('canvas');
     canvas.node.style.border = "solid thin black"
-    canvas.node.style.margin = "15px"
+    canvas.node.style.padding = 0;
+    canvas.node.style.margin = "auto";
+    canvas.node.style.display = "block";
+    canvas.node.style.position = "absolute";
+    canvas.node.style.top = 0;
+    canvas.node.style.bottom = 0;
+    canvas.node.style.left = 0;
+    canvas.node.style.right = 0;
+    canvas.node.style.width = "50%"
     canvas.context = canvas.node.getContext('2d');
     canvas.node.width = width || 100;
     canvas.node.height = height || 100;
@@ -174,5 +182,7 @@
   }
 
   var container = document.getElementById('canvas');
-  init(container, 800, 800);
+  let width = Math.min(window.innerWidth, 800)
+  let height = Math.min(window.innerHeight, 800)
+  init(container, width, height);
 })()
