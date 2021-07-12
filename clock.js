@@ -1,27 +1,34 @@
-// Version 4
-// Version 3
 (function () {
+
     // Creates a new canvas element and appends it as a child
     // to the parent element, and returns the reference to
     // the newly created canvas element
-
-
-    function createCanvas(parent, width, height) {
+    function createCanvas(parent) {
         var canvas = {};
         canvas.node = document.createElement('canvas');
         canvas.node.style.border = "solid thin black"
         canvas.node.style.padding = 0;
         canvas.node.style.margin = "auto";
-        canvas.node.style.display = "block";
+        canvas.node.style.display = "flex";
         canvas.node.style.position = "absolute";
         canvas.node.style.top = 0;
         canvas.node.style.bottom = 0;
         canvas.node.style.left = 0;
         canvas.node.style.right = 0;
-        canvas.node.style.width = "50%"
         canvas.context = canvas.node.getContext('2d');
-        canvas.node.width = width || 100;
-        canvas.node.height = height || 100;
+        canvas.node.width = Math.min(window.innerWidth, window.innerHeight);
+        canvas.node.height = Math.min(window.innerWidth, window.innerHeight);
+
+        canvas.mouse = {x: 0, y: 0}
+        canvas.node.addEventListener('mousemove', function onMouseMove(evt) {
+            var rect = canvas.node.getBoundingClientRect();
+            canvas.mouse.x = evt.x - rect.left
+            canvas.mouse.y = evt.y - rect.top
+        })
+        window.onresize = function onResize() {
+            canvas.node.width = Math.min(window.innerWidth, window.innerHeight);
+            canvas.node.height = Math.min(window.innerWidth, window.innerHeight);
+        }
         parent.appendChild(canvas.node);
         return canvas;
     }
@@ -119,14 +126,14 @@
         } else {
             panner.setPosition(xPos, yPos, zPos);
         }
-    } 
+    }
 
     function drawHand(ctx, radius, freq, elapsed) {
         ctx.save();
         ctx.globalCompositeOperation = 'color-dodge'
         ctx.strokeStyle = '#dba13daa';
         ctx.lineWidth = 9;
-        ctx.translate(width / 2, height / 2)
+        ctx.translate(ctx.canvas.width / 2, ctx.canvas.height / 2)
         ctx.rotate(Math.PI * elapsed * freq);
         ctx.beginPath();
         ctx.moveTo(0, 0);
@@ -137,13 +144,12 @@
         ctx.restore();
     }
 
-    function init(container, width, height) {
-        var canvas = createCanvas(container, width, height);
-        let RADIUS = width / 3;
+    function init(container) {
+        var canvas = createCanvas(container);
         let startTime;
 
         // Audio parameters
-        const TICK_PLAY_THRESH = 0.995;
+        const TICK_PLAY_THRESH = 0.997;
         let tickBuffers;
         let lastTickAudioSource = null;
         let lastTickGain = null;
@@ -172,6 +178,7 @@
         let number_blink_states = new Array(12).fill(0);
 
         function draw(timestamp) {
+            const RADIUS = Math.min(canvas.node.width, canvas.node.height) / 2.5;
             if (startTime === undefined)
                 startTime = timestamp;
 
@@ -234,12 +241,12 @@
 
             // ctx.globalCompositeOperation = 'destination-over';
             ctx.fillStyle = new RGBA((1+Math.sin(elapsed * 2 * Math.PI * 1e-3 * 0.1)) * 20 + 10, 0, (1+Math.cos(elapsed * 2 * Math.PI * 1e-3 * 0.05)) * 5 + 10, (1 + Math.sin(Math.PI/4 + elapsed * 2 * Math.PI * 1e-3 * 0.045)) * 0.235).toString()
-            ctx.fillRect(0, 0, width, height); // clear canvas
+            ctx.fillRect(0, 0, canvas.node.width, canvas.node.height); // clear canvas
 
 
             // Calculate amplitude of the noise for this frame
             let noise_amp = 20.0 * (1 + Math.pow(Math.sin(elapsed * 1e-6 * Math.PI * 2), 2.0))
-            //ctx.fillStyle = "#FFFFFF09"
+            //ctx.fillStyle = "#FFFFFFF9"
             //ctx.font = 12 + 'px serif';
             //ctx.fillText("currPitchBend: " + currPitchBend, 10, 72) // TODO: remove
             //ctx.fillText("currPanX: " + currPanX.toFixed(2) + " | currPanY: " + currPanY.toFixed(2) + " | currPanZ: " + currPanZ.toFixed(2), 10, 72+28) // TODO: remove
@@ -250,7 +257,7 @@
             ctx.strokeStyle = '#33003371';
             ctx.globalCompositeOperation = 'soft-light'
             ctx.lineCap = 'round';
-            ctx.translate(width / 2, height / 2)
+            ctx.translate(canvas.node.width / 2, canvas.node.height / 2)
             ctx.beginPath();
             ctx.lineWidth = 1;
 
@@ -369,7 +376,5 @@
     }
 
     var container = document.getElementById('canvas');
-    let width = Math.min(window.innerWidth, 800)
-    let height = Math.min(window.innerHeight, 800)
-    init(container, width, height);
+    init(container);
 })()
