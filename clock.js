@@ -26,7 +26,20 @@
         return canvas;
     }
 
-    async function getFile(audioCtx, filepath) {
+    class RGBA {
+        constructor(r, g, b, a) {
+            this.r = r
+            this.g = g
+            this.b = b
+            this.a = a
+        }
+
+        toString() {
+            return `rgba(${this.r}, ${this.g}, ${this.b}, ${this.a})`
+        }
+    }
+
+    async function createAudioBufferFromFile(audioCtx, filepath) {
         const response = await fetch(filepath);
         const arrayBuffer = await response.arrayBuffer();
         const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
@@ -34,7 +47,7 @@
     }
 
     async function setupSample(audioCtx, filepath) {
-        const sample = await getFile(audioCtx, filepath);
+        const sample = await createAudioBufferFromFile(audioCtx, filepath);
         return sample;
     }
 
@@ -51,6 +64,62 @@
         sampleSource.buffer = audioBuffer;
         return sampleSource;
     }
+
+
+    function createPanner(audioCtx) {
+        panner = audioCtx.createPanner();
+        listener = audioCtx.listener;
+
+        panner.panningModel = 'HRTF';
+        panner.distanceModel = 'inverse';
+        panner.refDistance = 1;
+        panner.maxDistance = 10000;
+        panner.rolloffFactor = 1;
+        panner.coneInnerAngle = 360;
+        panner.coneOuterAngle = 0;
+        panner.coneOuterGain = 0;
+
+        if (panner.orientationX) {
+            panner.orientationX.value = 1;
+            panner.orientationY.value = 0;
+            panner.orientationZ.value = 0;
+        } else {
+            panner.setOrientation(1, 0, 0);
+        }
+
+        if (listener.forwardX) {
+            listener.forwardX.value = 0;
+            listener.forwardY.value = 0;
+            listener.forwardZ.value = -1;
+            listener.upX.value = 0;
+            listener.upY.value = 1;
+            listener.upZ.value = 0;
+        } else {
+            listener.setOrientation(0, 0, -1, 0, 1, 0);
+        }
+
+        // listener will always be in the same place
+        if (listener.positionX) {
+            listener.positionX.value = 0;
+            listener.positionY.value = 0;
+            listener.positionZ.value = 0;
+        } else {
+            listener.setPosition(0, 0, 0);
+        }
+
+        return panner;
+    }
+
+    function positionPanner(panner, xPos, yPos, zPos) {
+        const audioCtx = panner.context
+        if (panner.positionX) {
+            panner.positionX.setValueAtTime(xPos, audioCtx.currentTime);
+            panner.positionY.setValueAtTime(yPos, audioCtx.currentTime);
+            panner.positionZ.setValueAtTime(zPos, audioCtx.currentTime);
+        } else {
+            panner.setPosition(xPos, yPos, zPos);
+        }
+    } 
 
     function drawHand(ctx, radius, freq, elapsed) {
         ctx.save();
@@ -74,13 +143,18 @@
         let startTime;
 
         // Audio parameters
-        const TICK_PLAY_THRESH = 0.99;
+        const TICK_PLAY_THRESH = 0.995;
         let tickBuffers;
         let lastTickAudioSource = null;
         let lastTickGain = null;
+        let lastTickPanner = null;
         let lastTickAudioIndex = 0;
         let lastTickPlayTime = 0;
         let currPitchBend = 0
+        let currPanX = 0; let currPanXAngle = 0
+        let currPanY = 0; let currPanYAngle = 0
+        const INIT_PAN_Z = 4
+        let currPanZ = INIT_PAN_Z
 
 
         function oscillate(input, min, max) {
@@ -105,6 +179,25 @@
             var ctx = canvas.context;
 
 
+            // Fuzz the position of the given panner
+            function randomizePanner(panner) {
+                if (panner !== null) {
+                    var pannerNoiseX = Math.random() * 0.1
+                    var pannerNoiseY = Math.random() * 0.1
+                    currPanXAngle = (currPanXAngle + pannerNoiseX) % 1.0
+                    currPanYAngle = (currPanYAngle + pannerNoiseY) % 1.0
+
+                    const Xradius = 1
+                    const Yradius = 1
+                    currPanX = Math.cos(currPanXAngle * 2 * Math.PI) * Xradius
+                    currPanY = Math.sin(currPanXAngle * 2 * Math.PI) * Yradius
+
+                    var distFromListenerNorm = Math.sqrt(Math.pow(currPanX, 2) + Math.pow(currPanY, 2)) / Math.sqrt(Math.pow(Xradius, 2) + Math.pow(Yradius, 2))
+                    currPanZ = INIT_PAN_Z - INIT_PAN_Z * distFromListenerNorm
+                    positionPanner(panner, currPanX, currPanY, currPanZ)
+                }
+            }
+
             // Randomly tick
             var tickRand = Math.random()
             var tickSampleRand = parseInt(Math.random() * tickBuffers.length)
@@ -112,11 +205,17 @@
                 var currTime = audioCtx.currentTime - lastTickPlayTime
                 let newTickAudioSource = createAudioSource(audioCtx, tickBuffers[tickSampleRand])
                 let newTickGain = audioCtx.createGain()
-                newTickGain.gain.setValueAtTime(1, audioCtx.currentTime)
+                let newTickPanner = createPanner(audioCtx);
+
                 newTickAudioSource.connect(newTickGain)
-                newTickGain.connect(audioCtx.destination)
                 newTickAudioSource.detune.value = currPitchBend
                 currPitchBend = parseInt(2 * (Math.random() - 0.5) * 1200)
+
+                newTickGain.connect(newTickPanner);
+                newTickGain.gain.setValueAtTime(1, audioCtx.currentTime)
+
+                randomizePanner(newTickPanner)
+                newTickPanner.connect(audioCtx.destination)
 
                 if (lastTickAudioSource !== null) {
                     lastTickGain.gain.exponentialRampToValueAtTime(0.03, audioCtx.currentTime + (lastTickAudioSource.buffer.duration - currTime))
@@ -130,22 +229,21 @@
                 lastTickAudioIndex = tickSampleRand
                 lastTickAudioSource = newTickAudioSource
                 lastTickGain = newTickGain
+                lastTickPanner = newTickPanner
             }
 
-            ctx.fillStyle = "#FFFFFF09"
-            ctx.font = 12 + 'px serif'
-            ctx.fillText("currPitchBend: " + currPitchBend, 10, 72) // TODO: remove
-
             // ctx.globalCompositeOperation = 'destination-over';
-            ctx.fillStyle = "#00000012";
+            ctx.fillStyle = new RGBA((1+Math.sin(elapsed * 2 * Math.PI * 1e-3 * 0.1)) * 20 + 10, 0, (1+Math.cos(elapsed * 2 * Math.PI * 1e-3 * 0.05)) * 5 + 10, (1 + Math.sin(Math.PI/4 + elapsed * 2 * Math.PI * 1e-3 * 0.045)) * 0.235).toString()
             ctx.fillRect(0, 0, width, height); // clear canvas
 
 
             // Calculate amplitude of the noise for this frame
             let noise_amp = 20.0 * (1 + Math.pow(Math.sin(elapsed * 1e-6 * Math.PI * 2), 2.0))
-            ctx.fillStyle = "#FFFFFF09"
-            ctx.font = 24 + 'px serif';
-            // ctx.fillText("Noise amp: " + noise_amp.toExponential(9), 10, 24) // TODO: remove
+            //ctx.fillStyle = "#FFFFFF09"
+            //ctx.font = 12 + 'px serif';
+            //ctx.fillText("currPitchBend: " + currPitchBend, 10, 72) // TODO: remove
+            //ctx.fillText("currPanX: " + currPanX.toFixed(2) + " | currPanY: " + currPanY.toFixed(2) + " | currPanZ: " + currPanZ.toFixed(2), 10, 72+28) // TODO: remove
+            //ctx.fillText("noise_amp: " + noise_amp.toExponential(9), 10, 72+28*2) // TODO: remove
 
             ctx.save();
             ctx.fillStyle = '#4557afff';
@@ -203,7 +301,7 @@
 
                 let blinkNoise = Math.random()
                 let blinkThresh = 0.995
-                let numBlinkFrames = 10
+                let numBlinkFrames = 15
                 let shouldBlink = number_blink_states[i] > 0 && number_blink_states[i] < numBlinkFrames
                 if ((blinkNoise > blinkThresh || shouldBlink) && (hour == 9 || hour == 3 || hour == 12 || hour == 6)) {
                     if (hour == 9)
