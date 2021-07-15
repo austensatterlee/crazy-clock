@@ -1,5 +1,4 @@
 (function () {
-
     // Creates a new canvas element and appends it as a child
     // to the parent element, and returns the reference to
     // the newly created canvas element
@@ -19,7 +18,7 @@
         canvas.node.width = Math.min(window.innerWidth, window.innerHeight);
         canvas.node.height = Math.min(window.innerWidth, window.innerHeight);
 
-        canvas.mouse = {x: 0, y: 0}
+        canvas.mouse = { x: 0, y: 0 }
         canvas.node.addEventListener('mousemove', function onMouseMove(evt) {
             var rect = canvas.node.getBoundingClientRect();
             canvas.mouse.x = evt.x - rect.left
@@ -227,12 +226,14 @@
                 if (lastTickAudioSource !== null) {
                     lastTickGain.gain.exponentialRampToValueAtTime(0.03, audioCtx.currentTime + (lastTickAudioSource.buffer.duration - currTime))
                 }
+
                 if (lastTickAudioSource !== null && currTime < lastTickAudioSource.buffer.duration && lastTickAudioIndex == tickSampleRand) {
                     newTickAudioSource.start(0, currTime)
                 } else {
                     newTickAudioSource.start()
                     lastTickPlayTime = audioCtx.currentTime
                 }
+
                 lastTickAudioIndex = tickSampleRand
                 lastTickAudioSource = newTickAudioSource
                 lastTickGain = newTickGain
@@ -240,7 +241,7 @@
             }
 
             // ctx.globalCompositeOperation = 'destination-over';
-            ctx.fillStyle = new RGBA((1+Math.sin(elapsed * 2 * Math.PI * 1e-3 * 0.1)) * 20 + 10, 0, (1+Math.cos(elapsed * 2 * Math.PI * 1e-3 * 0.05)) * 5 + 10, (1 + Math.sin(Math.PI/4 + elapsed * 2 * Math.PI * 1e-3 * 0.045)) * 0.235).toString()
+            ctx.fillStyle = new RGBA((1 + Math.sin(elapsed * 2 * Math.PI * 1e-3 * 0.1)) * 20 + 10, 0, (1 + Math.cos(elapsed * 2 * Math.PI * 1e-3 * 0.05)) * 5 + 10, (1 + Math.sin(Math.PI / 4 + elapsed * 2 * Math.PI * 1e-3 * 0.045)) * 0.235).toString()
             ctx.fillRect(0, 0, canvas.node.width, canvas.node.height); // clear canvas
 
 
@@ -366,15 +367,31 @@
             'audio/01-210709_2012-glued.wav',
             'audio/Tickle Tockle (arcade comp).wav'
         ]
+
+
+        function onInitButtonClick(evt) {
+            var tmpSrc = createAudioSource(audioCtx, tickBuffers[0])
+            var tmpGain = audioCtx.createGain()
+            tmpGain.gain.setValueAtTime(0, audioCtx.currentTime)
+            tmpSrc.connect(tmpGain)
+            tmpGain.connect(audioCtx.destination)
+            tmpSrc.start()
+
+            var initButton = document.getElementById('initButton')
+            initButton.parentNode.removeChild(initButton)
+            window.requestAnimationFrame(draw)
+        }
+
         setupSamples(audioCtx, TICK_FILENAMES)
             .then((buffers) => {
                 tickBuffers = buffers
                 console.log(tickBuffers) // TODO: Remove
-                window.requestAnimationFrame(draw)
+                var initButton = document.getElementById('initButton')
+                initButton.addEventListener("click", onInitButtonClick)
+                initButton.addEventListener("touchend", onInitButtonClick)
             })
         /* </Load assets> */
     }
-
-    var container = document.getElementById('canvas');
-    init(container);
+    var container = document.getElementById('canvas')
+    init(container)
 })()
