@@ -5,7 +5,6 @@
     function createCanvas(parent) {
         var canvas = {};
         canvas.node = document.createElement('canvas');
-        canvas.node.style.border = "solid thin black"
         canvas.node.style.padding = 0;
         canvas.node.style.margin = "auto";
         canvas.node.style.display = "flex";
@@ -18,6 +17,16 @@
         canvas.node.width = Math.min(window.innerWidth, window.innerHeight);
         canvas.node.height = Math.min(window.innerWidth, window.innerHeight);
 
+        try {
+            canvas.glnode = fx.canvas()
+        } catch (e) {
+            console.error(e)
+        }
+        canvas.glnode.style.cssText = canvas.node.style.cssText;
+        canvas.glcontext = canvas.glnode.getContext('webgl');
+        canvas.glnode.width = canvas.node.width;
+        canvas.glnode.height = canvas.node.height;
+
         canvas.mouse = { x: 0, y: 0 }
         canvas.node.addEventListener('mousemove', function onMouseMove(evt) {
             var rect = canvas.node.getBoundingClientRect();
@@ -27,6 +36,8 @@
         window.onresize = function onResize() {
             canvas.node.width = Math.min(window.innerWidth, window.innerHeight);
             canvas.node.height = Math.min(window.innerWidth, window.innerHeight);
+            canvas.glnode.width = canvas.node.width;
+            canvas.glnode.height = canvas.node.height;
         }
         parent.appendChild(canvas.node);
         return canvas;
@@ -146,13 +157,22 @@
     function init(container) {
         var canvas = createCanvas(container);
         let startTime;
+        let lastTimestamp = 0;
+        let handsElapsedTime = 0;
+
+        // Image parameters
+        let images = [];
+        let textures = []; // webgl textures for images
+        let lastImage = null
+        let lastImageTime = null
+        let imagePlaybackRate = 1 // images per second
+        let imageOpacity = 0.3
 
         // Audio parameters
-        const TICK_PLAY_THRESH = 0.997;
-        let tickBuffers;
+        const TICK_PLAY_THRESH = 0.99;
+        let tickBuffers = [];
         let lastTickAudioSource = null;
         let lastTickGain = null;
-        let lastTickPanner = null;
         let lastTickAudioIndex = 0;
         let lastTickPlayTime = 0;
         let currPitchBend = 0
@@ -182,8 +202,50 @@
                 startTime = timestamp;
 
             const elapsed = (timestamp - startTime);
+            const timestampDiff = timestamp - lastTimestamp
+            handsElapsedTime += timestampDiff
+            lastTimestamp = timestamp
             var ctx = canvas.context;
 
+            // Random number that determines when next sound is played
+            var tickRand = Math.random()
+
+            function drawAnimation() {
+                lastImage = lastImage === null ? 0 : lastImage
+                lastImageTime = lastImageTime === null ? timestamp : lastImageTime
+                var img = images[lastImage]
+                // Calculate divisor to scale image within aspect ratio
+                var imgWidthDivisor = img.width / (canvas.node.width / 3)
+                var imgHeightDivisor = img.height / (canvas.node.height / 3)
+                var imgDivisor = Math.max(imgWidthDivisor, imgHeightDivisor)
+                var imgWidth = img.width / imgDivisor
+                var imgHeight = img.height / imgDivisor
+
+                var noisyImagePlaybackRate = imagePlaybackRate * Math.random()
+                if (timestamp - lastImageTime <= 1e3 / noisyImagePlaybackRate * Math.random()) {
+                    // Draw webgl image onto hidden canvas
+                    var texture = textures[lastImage]
+                    canvas.glnode.draw(texture)
+                        .hueSaturation(Math.random(), 0.5 + 0.5 * Math.random())
+                        .brightnessContrast(Math.random(), Math.random())
+                        .triangleBlur(100 * Math.random())
+                        .update();
+                    // Draw image to visible canvas
+                    ctx.save()
+                    ctx.globalAlpha = imageOpacity
+                    ctx.drawImage(canvas.glnode, 0, canvas.node.height - imgHeight, imgWidth, imgHeight);
+                    ctx.restore()
+                }
+                // Advance frame
+                if (tickRand > TICK_PLAY_THRESH || timestamp - lastImageTime > 1e3 / noisyImagePlaybackRate) {
+                    var nextImage = (lastImage + parseInt(Math.random() * images.length)) % images.length
+                    imageOpacity = tickRand > TICK_PLAY_THRESH ? 0.8 : 0.3
+                    lastImage = nextImage
+                    lastImageTime = timestamp
+                }
+            }
+
+            drawAnimation();
 
             // Fuzz the position of the given panner
             function randomizePanner(panner) {
@@ -205,13 +267,13 @@
             }
 
             // Randomly tick
-            var tickRand = Math.random()
             var tickSampleRand = parseInt(Math.random() * tickBuffers.length)
             if (tickRand > TICK_PLAY_THRESH) {
                 var currTime = audioCtx.currentTime - lastTickPlayTime
                 let newTickAudioSource = createAudioSource(audioCtx, tickBuffers[tickSampleRand])
                 let newTickGain = audioCtx.createGain()
                 let newTickPanner = createPanner(audioCtx);
+                handsElapsedTime += 2 * (Math.random() - 0.5) * (Math.random() * 1e3);
 
                 newTickAudioSource.connect(newTickGain)
                 newTickAudioSource.detune.value = currPitchBend
@@ -345,8 +407,8 @@
             ctx.restore();
 
             let handNoise = Math.random() * 2 - 1;
-            drawHand(ctx, RADIUS * 1.5 + 5 * handNoise, 1e-3 / 10, elapsed);
-            drawHand(ctx, RADIUS * 0.6 + handNoise, 1e-3, elapsed);
+            drawHand(ctx, RADIUS * 1.5 + 5 * handNoise, 1e-3 / 10, 0.2 * elapsed + 0.8 * handsElapsedTime);
+            drawHand(ctx, RADIUS * 0.6 + handNoise, 1e-3, 0.8 * elapsed + 0.2 * handsElapsedTime);
 
             window.requestAnimationFrame(draw);
         }
@@ -368,6 +430,19 @@
             'audio/Tickle Tockle (arcade comp).wav'
         ]
 
+        // Setup images
+        var imageLoadPromises = []
+        for (var i = 3; i < 19; i++) {
+            imageLoadPromises.push(new Promise((resolve, reject) => {
+                var image = new Image()
+                image.src = "images/frame_" + i + ".png"
+                image.onload = function (evt) {
+                    images.push(image)
+                    textures.push(canvas.glnode.texture(image))
+                    resolve()
+                }
+            }))
+        }
 
         function onInitButtonClick(evt) {
             var tmpSrc = createAudioSource(audioCtx, tickBuffers[0])
@@ -382,7 +457,8 @@
             window.requestAnimationFrame(draw)
         }
 
-        setupSamples(audioCtx, TICK_FILENAMES)
+        Promise.all(imageLoadPromises)
+            .then(() => { return setupSamples(audioCtx, TICK_FILENAMES) })
             .then((buffers) => {
                 tickBuffers = buffers
                 console.log(tickBuffers) // TODO: Remove
