@@ -141,14 +141,19 @@
     function drawHand(ctx, radius, freq, elapsed) {
         ctx.save();
         ctx.globalCompositeOperation = 'color-dodge'
-        ctx.strokeStyle = '#dba13daa';
-        ctx.lineWidth = 9;
+        ctx.strokeStyle = '#dba13d5a';
+        ctx.lineWidth = Math.random()*4+4;
+        // ctx.lineJoin = "round";
+        ctx.lineCap = "round";
         ctx.translate(ctx.canvas.width / 2, ctx.canvas.height / 2)
         ctx.rotate(Math.PI * elapsed * freq);
         ctx.beginPath();
         ctx.moveTo(0, 0);
-        for (var i = 0; i < 10; i++) {
-            ctx.lineTo(radius * (i + 1) / 11, Math.random() * 10);
+        var res = 100
+        var noise = 0
+        for (var i = 0; i < res; i++) {
+            noise += 2 * Math.random() - 1;
+            ctx.lineTo(radius * (i + 1) / (res + 1), noise);
         }
         ctx.stroke();
         ctx.restore();
@@ -195,9 +200,14 @@
         }
 
         let number_blink_states = new Array(12).fill(0);
+        let RADIUS = Math.min(canvas.node.width, canvas.node.height) / 2.5;
+        let radius_walk = 0.0;
+        let radius_walk_vel = 1.0;
+        let radius_walk_vel_start = 0;
+        let radius_walk_begin_vert = 0;
+        let radius_walk_num_verts = 0
 
         function draw(timestamp) {
-            const RADIUS = Math.min(canvas.node.width, canvas.node.height) / 2.5;
             if (startTime === undefined)
                 startTime = timestamp;
 
@@ -207,7 +217,20 @@
             lastTimestamp = timestamp
             var ctx = canvas.context;
 
+
+            radius_walk_vel_start += 1;
+            if (radius_walk_vel_start > 60) {
+                radius_walk_vel_start = 0
+                radius_walk_vel = 1.0;
+            }
+            radius_walk += radius_walk_vel * (Math.random() - 0.5) * 0.00001;
+
+            //else
+            //    RADIUS = Math.min(canvas.node.width, canvas.node.height) / 2.5
             // Random number that determines when next sound is played
+            // ctx.fillStyle = "#FFFFFFF9"
+            // ctx.font = 12 + 'px serif';
+            // ctx.fillText("RADIUS: " + RADIUS, 10, 72) // TODO: remove
             var tickRand = Math.random()
 
             function drawAnimation() {
@@ -245,7 +268,7 @@
                 }
             }
 
-            drawAnimation();
+            // drawAnimation();
 
             // Fuzz the position of the given panner
             function randomizePanner(panner) {
@@ -277,7 +300,7 @@
 
                 newTickAudioSource.connect(newTickGain)
                 newTickAudioSource.detune.value = currPitchBend
-                currPitchBend = parseInt(2 * (Math.random() - 0.5) * 1200)
+                currPitchBend = parseInt(4 * (Math.random() - 0.5) * 1200)
 
                 newTickGain.connect(newTickPanner);
                 newTickGain.gain.setValueAtTime(1, audioCtx.currentTime)
@@ -300,6 +323,11 @@
                 lastTickAudioSource = newTickAudioSource
                 lastTickGain = newTickGain
                 lastTickPanner = newTickPanner
+
+                radius_walk_vel = Math.random()*2-1;
+                radius_walk_vel_start = 0;
+                radius_walk_begin_vert = Math.random() * noise_res;
+                radius_walk_num_verts += Math.random();
             }
 
             // ctx.globalCompositeOperation = 'destination-over';
@@ -324,7 +352,7 @@
             ctx.beginPath();
             ctx.lineWidth = 1;
 
-            const NUM_CIRCLES = 7;
+            const NUM_CIRCLES = 12;
             ctx.save()
             ctx.translate(node_noises[0], node_noises[1])
             for (var circleNum = 1; circleNum <= NUM_CIRCLES; circleNum += 1) {
@@ -341,6 +369,11 @@
 
                     let fromAngle = 2 * Math.PI * i / noise_res
                     let toAngle = 2 * Math.PI * (i + 1) / noise_res
+                    let oldRadius = RADIUS
+                    // if (i > radius_walk_begin_vert && i < radius_walk_begin_vert + 5) {
+                    //     if (radius_walk_vel > 1.0)
+                    //         RADIUS = Math.pow(circleNum/NUM_CIRCLES,1.5) * Math.min(canvas.node.width, canvas.node.height) / 2.5 * 0.5 * (1 + 0.5 * Math.sin(elapsed * (radius_walk + 0.001)))
+                    // }
                     let arcRadius = radiusScale * (RADIUS + node_noises[i]);
 
                     if (i == 0)
@@ -349,6 +382,7 @@
                         ctx.arcTo(lastPoint[0], lastPoint[1], Math.cos(toAngle) * arcRadius, Math.sin(toAngle) * arcRadius, 1 + Math.tanh(noise_amp))
                     lastPoint[0] = Math.cos(toAngle) * arcRadius
                     lastPoint[1] = Math.sin(toAngle) * arcRadius
+                    RADIUS = oldRadius;
                 }
                 ctx.arcTo(lastPoint[0], lastPoint[1], radiusScale * (RADIUS + node_noises[0]), 0, 1 + Math.tanh(noise_amp))
                 ctx.stroke()
@@ -370,8 +404,8 @@
 
 
                 let blinkNoise = Math.random()
-                let blinkThresh = 0.995
-                let numBlinkFrames = 15
+                let blinkThresh = 0.9995
+                let numBlinkFrames = Math.random()*15
                 let shouldBlink = number_blink_states[i] > 0 && number_blink_states[i] < numBlinkFrames
                 if ((blinkNoise > blinkThresh || shouldBlink) && (hour == 9 || hour == 3 || hour == 12 || hour == 6)) {
                     if (hour == 9)
@@ -461,10 +495,14 @@
             .then(() => { return setupSamples(audioCtx, TICK_FILENAMES) })
             .then((buffers) => {
                 tickBuffers = buffers
-                console.log(tickBuffers) // TODO: Remove
                 var initButton = document.getElementById('initButton')
-                initButton.addEventListener("click", onInitButtonClick)
-                initButton.addEventListener("touchend", onInitButtonClick)
+                initButton.classList.remove("begin-button-disabled")
+                initButton.classList.add("begin-button-enabled")
+                initButton.removeAttribute("disabled")
+                initButton.textContent = "B̵͕̈͑͋E̷̟̻͌̈́G̷̱͇̖͐͒̄Ḯ̶͇͚N̷̩͌"
+                var initButtonDiv = document.getElementById('initButtonDiv')
+                initButtonDiv.addEventListener("click", onInitButtonClick)
+                initButtonDiv.addEventListener("touchend", onInitButtonClick)
             })
         /* </Load assets> */
     }
