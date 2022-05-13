@@ -357,7 +357,7 @@
             ctx.translate(node_noises[0], node_noises[1])
             for (var circleNum = 1; circleNum <= NUM_CIRCLES; circleNum += 1) {
                 if (circleNum % 2 == 0) {
-                    ctx.fillStyle = '#4557af63';
+                    ctx.fillStyle = '#95570f63';
                 } else {
                     ctx.fillStyle = '#af4d2573';
                 }
